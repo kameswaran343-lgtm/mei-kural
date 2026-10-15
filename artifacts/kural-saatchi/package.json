@@ -41,6 +41,8 @@
     "@replit/vite-plugin-cartographer": "catalog:",
     "@replit/vite-plugin-dev-banner": "catalog:",
     "@replit/vite-plugin-runtime-error-modal": "catalog:",
+    "@rollup/rollup-win32-x64-msvc": "^4.64.6",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
@@ -76,5 +78,10 @@
   },
   "dependencies": {
     "html2canvas": "^1.4.1"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "4.63.1",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.0.0",
+    "lightningcss-win32-x64-msvc": "^1.32.0"
   }
 }

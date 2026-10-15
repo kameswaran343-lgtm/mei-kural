@@ -269,6 +269,25 @@ export function verifyQuote(
     return applyClaim(result, claimedNumber);
   }
 
+  const rawLines = text
+    .split(/\r\n|[\n\r\u2028\u2029]/u)
+    .filter((line) => line.trim().length > 0);
+  if (rawLines.length > 2) {
+    trace.push({
+      stage: "format",
+      ms: 0,
+      detail: `Rejected ${rawLines.length} non-empty lines; a Tirukkural couplet has two lines.`,
+    });
+    const result = makeBase(
+      "NOT_FOUND",
+      0,
+      [{ label: "Invalid couplet format", detail: "A Tirukkural couplet has two lines. Submit no more than two non-empty lines." }],
+      trace,
+      { message: "Cannot verify text with more than two non-empty lines." },
+    );
+    return applyClaim(result, claimedNumber);
+  }
+
   const exactStarted = performance.now();
   const compactToKural = new Map(
     NORMALIZED_KURALS.map(({ normNospace, kural }) => [normNospace, kural]),
