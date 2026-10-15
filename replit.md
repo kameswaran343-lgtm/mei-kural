@@ -1,21 +1,24 @@
-# [Project name]
+# Kural Saatchi
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A source-grounded Tamil quotation verifier that compares claims against the Tirukkural and abstains when it cannot prove a match.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/kural-saatchi run dev` — run the web app
+- `pnpm --filter @workspace/kural-saatchi run typecheck` — typecheck the web app
+- `pnpm --filter @workspace/api-server run typecheck` — typecheck the API
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- No database is required; canonical corpus data is stored in `artifacts/api-server/data/`.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- API: Express 5 + generated OpenAPI/Zod contracts
+- Data: validated JSON corpus and configured decoys; no database
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -43,3 +46,12 @@ _Populate as you build — sharp edges, "always run X before Y" rules._
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+
+## Kural Saatchi
+
+- Purpose: source-grounded Tamil quotation verification for the Tirukkural, with quote guarding, corpus search, browse, and benchmark tools.
+- Run the API with `pnpm --filter @workspace/api-server run dev` and the app with `pnpm --filter @workspace/kural-saatchi run dev`.
+- Canonical data is JSON under `artifacts/api-server/data/`; no database is used. OpenAPI contracts are defined in `lib/api-spec/openapi.yaml`; rerun codegen after edits.
+- Verification verdicts must remain deterministic and corpus-backed. Fuzzy similarity is only a candidate-ranking aid; do not use it alone to declare a quote authentic.
+- Only output canonical couplet text from the validated source corpus. On invalid or missing full-corpus data, use only the explicit seed fallback and show its demo warning.
+- Keep configured decoys limited to the works and lines supplied for this app. Do not invent adhikaram titles.

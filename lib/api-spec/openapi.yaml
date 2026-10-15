@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: kural
+    description: Source-grounded Tirukkural quotation verification
 paths:
   /healthz:
     get:
@@ -24,6 +26,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /health:
+    get:
+      operationId: getKuralHealth
+      tags: [kural]
+      summary: Corpus status
+      responses:
+        "200":
+          description: Corpus verification status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorpusHealth"
+  /verify:
+    post:
+      operationId: verifyKural
+      tags: [kural]
+      summary: Verify a quotation against the source corpus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyInput"
+      responses:
+        "200":
+          description: Verification verdict and supporting evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResult"
+  /guard:
+    post:
+      operationId: guardText
+      tags: [kural]
+      summary: Detect and verify Tamil quote spans in text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardInput"
+      responses:
+        "200":
+          description: Quote spans and safe corrected text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardResult"
+  /chat:
+    post:
+      operationId: guardedChat
+      tags: [kural]
+      summary: Compare raw simulated AI output with a quote-guarded response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatInput"
+      responses:
+        "200":
+          description: Raw and guarded response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResult"
+  /search:
+    post:
+      operationId: searchKurals
+      tags: [kural]
+      summary: Search real couplets by text or meaning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchInput"
+      responses:
+        "200":
+          description: Matching real couplets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KuralSearchResult"
+  /kurals:
+    get:
+      operationId: listKurals
+      tags: [kural]
+      summary: Browse real couplets
+      parameters:
+        - name: paal
+          in: query
+          schema: { type: string, enum: [Aram, Porul, Inbam] }
+        - name: adhikaram
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 133 }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        "200":
+          description: Paginated real couplets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KuralPage"
+  /kurals/{number}:
+    get:
+      operationId: getKural
+      tags: [kural]
+      summary: Get one real couplet
+      parameters:
+        - name: number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 1330 }
+      responses:
+        "200":
+          description: A real couplet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Kural"
+        "404":
+          description: Kural not found
+  /benchmark/run:
+    post:
+      operationId: runBenchmark
+      tags: [kural]
+      summary: Benchmark the verifier against generated challenge sets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BenchmarkInput"
+      responses:
+        "200":
+          description: Benchmark metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BenchmarkResult"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +181,201 @@ components:
           type: string
       required:
         - status
+    Kural:
+      type: object
+      required: [number, line1, line2, paal, adhikaramNo, translation]
+      properties:
+        number: { type: integer }
+        line1: { type: string }
+        line2: { type: string }
+        paal: { type: string, enum: [Aram, Porul, Inbam] }
+        adhikaramNo: { type: integer }
+        translation: { type: string }
+        explanation: { type: string }
+    CorpusHealth:
+      type: object
+      required: [status, count, corpusHash, demoCorpus]
+      properties:
+        status: { type: string }
+        count: { type: integer }
+        corpusHash: { type: string }
+        demoCorpus: { type: boolean }
+    Thresholds:
+      type: object
+      properties:
+        misquoteMin: { type: number, minimum: 0, maximum: 1 }
+        spliceLineMin: { type: number, minimum: 0, maximum: 1 }
+        decoyMin: { type: number, minimum: 0, maximum: 1 }
+    VerifyInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 10000 }
+        claimedNumber: { type: integer, minimum: 1, maximum: 1330 }
+        thresholds:
+          $ref: "#/components/schemas/Thresholds"
+    Evidence:
+      type: object
+      required: [label, detail]
+      properties:
+        label: { type: string }
+        detail: { type: string }
+    PipelineStage:
+      type: object
+      required: [stage, ms, detail]
+      properties:
+        stage: { type: string }
+        ms: { type: number }
+        detail: { type: string }
+    DiffPart:
+      type: object
+      required: [type, text]
+      properties:
+        type: { type: string, enum: [equal, sub, ins, del] }
+        text: { type: string }
+    VerificationResult:
+      type: object
+      required: [verdict, confidence, evidence, trace, nearest, splicedReferences]
+      properties:
+        verdict:
+          type: string
+          enum: [VERIFIED, VERIFIED_FRAGMENT, MISQUOTED, SPLICED, MISATTRIBUTED, NOT_FOUND, TOO_SHORT, WRONG_NUMBER]
+        confidence: { type: number }
+        kural:
+          anyOf:
+            - $ref: "#/components/schemas/Kural"
+            - type: "null"
+        nearest:
+          type: array
+          items:
+            $ref: "#/components/schemas/NearestKural"
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/Evidence"
+        trace:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStage"
+        diff:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiffPart"
+        splicedReferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Kural"
+        misattributedWork: { type: string }
+        misattributedAuthor: { type: string }
+        claimCheck: { type: string }
+        claimedNumber: { type: integer }
+        message: { type: string }
+    NearestKural:
+      type: object
+      required: [kural, score, label]
+      properties:
+        kural:
+          $ref: "#/components/schemas/Kural"
+        score: { type: number }
+        label: { type: string }
+    GuardInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 30000 }
+    QuoteSegment:
+      type: object
+      required: [text, verdict, start, end]
+      properties:
+        text: { type: string }
+        verdict: { type: string }
+        start: { type: integer }
+        end: { type: integer }
+        kuralNumber: { type: integer }
+    GuardResult:
+      type: object
+      required: [segments, summary, correctedText]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteSegment"
+        summary: { type: string }
+        correctedText: { type: string }
+    ChatInput:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 10000 }
+        mode: { type: string }
+    ChatResult:
+      type: object
+      required: [raw, guarded, findings]
+      properties:
+        raw: { type: string }
+        guarded: { type: string }
+        findings:
+          type: array
+          items: { type: string }
+    SearchInput:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 1000 }
+    KuralSearchResult:
+      type: object
+      required: [results, total]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/NearestKural"
+        total: { type: integer }
+    KuralPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Kural"
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+    BenchmarkInput:
+      type: object
+      properties:
+        thresholds:
+          $ref: "#/components/schemas/Thresholds"
+        seed: { type: integer, default: 42 }
+    BenchmarkMetric:
+      type: object
+      required: [label, count, correct, accuracy]
+      properties:
+        label: { type: string }
+        count: { type: integer }
+        correct: { type: integer }
+        accuracy: { type: number }
+    BenchmarkResult:
+      type: object
+      required: [total, falseAcceptRate, abstentionRate, metrics, matrix, baseline]
+      properties:
+        total: { type: integer }
+        falseAcceptRate: { type: number }
+        abstentionRate: { type: number }
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/BenchmarkMetric"
+        matrix:
+          type: array
+          items:
+            type: array
+            items: { type: integer }
+        baseline:
+          type: object
+          required: [falseAcceptRate, accuracy]
+          properties:
+            falseAcceptRate: { type: number }
+            accuracy: { type: number }
 

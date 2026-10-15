@@ -1,0 +1,133 @@
+Build a complete, working web app called "Kural Saatchi (குறள் சாட்சி)". It verifies whether a Tamil quotation really exists in the Tirukkural (1330 couplets) and abstains when it cannot prove a match. Don't ask questions. Build, run and test it.
+
+CORE PRINCIPLE: Verification first, generation last.
+- The verdict always comes from a deterministic string-matching pipeline against the source text, never from an LLM.
+- No code path may output couplet text that isn't read from the corpus file.
+- NOT_FOUND must never return a match object.
+
+TECH STACK
+- Python 3.11, FastAPI, Uvicorn, Pydantic, rapidfuzz, scikit-learn, numpy, regex, httpx, pytest.
+- Frontend: static index.html + app.js (vanilla JS) + styles.css, served by FastAPI. Tailwind CDN, Chart.js CDN, html2canvas CDN. Google Fonts: Inter, Noto Sans Tamil, Noto Serif Tamil.
+- No database; data lives in JSON files in /data.
+- Run: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+CORPUS
+- Download https://raw.githubusercontent.com/tk120404/thirukkural/master/thirukkural.json. Inspect the keys and map them flexibly (number, line1, line2, English translation, explanations).
+- Fallback: GET https://api-thirukkural.vercel.app/api?num={1..1330}.
+- Last resort: use the seed below and show a yellow "DEMO CORPUS" banner.
+- Validate at startup: 1330 entries, contiguous numbers, two lines each. Compute a SHA-256 corpus hash and show it in the footer.
+- Derive adhikaram_no = ceil(number/10). Paal: Aram 1-380, Porul 381-1080, Inbam 1081-1330. Never invent chapter names.
+
+SEED / TEST COUPLETS (number: line1 / line2)
+1: அகர முதல எழுத்தெல்லாம் ஆதி / பகவன் முதற்றே உலகு
+2: கற்றதனால் ஆய பயனென்கொல் வாலறிவன் / நற்றாள் தொழாஅர் எனின்
+10: பிறவிப் பெருங்கடல் நீந்துவர் நீந்தார் / இறைவன் அடிசேரா தார்
+34: மனத்துக்கண் மாசிலன் ஆதல் அனைத்தறன் / ஆகுல நீர பிற
+72: அன்பிலார் எல்லாம் தமக்குரியர் அன்புடையார் / என்பும் உரியர் பிறர்க்கு
+100: இனிய உளவாக இன்னாத கூறல் / கனிஇருப்ப காய்கவர்ந் தற்று
+236: தோன்றின் புகழொடு தோன்றுக அஃதிலார் / தோன்றலின் தோன்றாமை நன்று
+300: யாம்மெய்யாக் கண்டவற்றுள் இல்லை எனைத்தொன்றும் / வாய்மையின் நல்ல பிற
+314: இன்னாசெய் தாரை ஒறுத்தல் அவர்நாண / நன்னயம் செய்து விடல்
+322: பகுத்துண்டு பல்லுயிர் ஓம்புதல் நூலோர் / தொகுத்தவற்றுள் எல்லாம் தலை
+391: கற்க கசடறக் கற்பவை கற்றபின் / நிற்க அதற்குத் தக
+396: தொட்டனைத் தூறும் மணற்கேணி மாந்தர்க்குக் / கற்றனைத் தூறும் அறிவு
+423: எப்பொருள் யார்யார்வாய்க் கேட்பினும் அப்பொருள் / மெய்ப்பொருள் காண்பது அறிவு
+595: வெள்ளத் தனைய மலர்நீட்டம் மாந்தர்தம் / உள்ளத் தனையது உயர்வு
+616: முயற்சி திருவினை ஆக்கும் முயற்றின்மை / இன்மை புகுத்தி விடும்
+620: ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித் / தாழாது உஞற்று பவர்
+666: எண்ணிய எண்ணியாங் கெய்துப எண்ணியார் / திண்ணியராப் பெற்றாக்கால்
+1330: ஊடுதல் காமத்திற்கு இன்பம் அதற்கின்பம் / கூடி முயங்கப் பெறின்
+(The downloaded dataset wins on any conflict.)
+
+DECOY CORPUS (other Tamil works, for misattribution detection; exact whole-text match is enough)
+Purananuru 192 (Kaniyan Pungundranar): "யாதும் ஊரே யாவரும் கேளிர்", "தீதும் நன்றும் பிறர்தர வாரா"
+Tirumantiram (Tirumular): "அன்பும் சிவமும் இரண்டென்பர் அறிவிலார்", "ஒன்றே குலமும் ஒருவனே தேவனும்"
+Aathichoodi (Avvaiyar): "அறஞ்செய விரும்பு", "ஆறுவது சினம்", "ஈவது விலக்கேல்"
+Bharathiyar: "பாருக்குள்ளே நல்ல நாடு எங்கள் பாரத நாடு"
+Don't add more decoys from memory.
+
+NORMALIZATION
+NFC; remove zero-width chars; keep only the Tamil block (U+0B80-U+0BFF) and whitespace; collapse spaces; produce norm and norm_nospace. Use a grapheme splitter for all diffs: regex.findall(r'[\u0B85-\u0B94\u0B83]|[\u0B95-\u0BB9][\u0BBE-\u0BCD\u0BD7]?|.', s).
+
+VERIFICATION PIPELINE (stop at the first terminal verdict)
+0. Preprocess. If < 3 words or < 10 graphemes → TOO_SHORT (abstain).
+1. Exact.
+   - nospace equality with a couplet → VERIFIED.
+   - Word-boundary substring of one couplet with ≥ 3 words → VERIFIED_FRAGMENT.
+   - nospace substring with ≥ 12 graphemes → VERIFIED_FRAGMENT with the note "spacing differs".
+2. Candidates: TfidfVectorizer(analyzer="char", ngram_range=(2,4)) over norm_nospace, top 10.
+3. Rerank with rapidfuzz ratio: full, line1 and line2 scores (and partial_ratio for single lines).
+4. Splice: two input lines, each ≥ 0.90 to lines of DIFFERENT couplets → SPLICED (return both references).
+5. Decoy: match ≥ 0.90 (or exact) against the decoy corpus → MISATTRIBUTED (work, author, ref).
+6. Misquote: best score ≥ 0.80 → MISQUOTED, with the canonical text and a grapheme-level diff (equal/sub/ins/del via difflib).
+7. Otherwise NOT_FOUND (abstain) with the "nearest" list (score ≥ 0.45, labeled "NOT a match").
+Claim check: if a Kural number is claimed, return OK / WRONG_NUMBER (give the real number) / UNSUPPORTED_CLAIM.
+Config thresholds are env-overridable: MISQUOTE_MIN=0.80, SPLICE_LINE_MIN=0.90, DECOY_MIN=0.90.
+Each result includes an evidence list and a pipeline trace (stage, ms, detail).
+
+API (JSON)
+GET /api/health
+POST /api/verify {text, claimed_number?, thresholds?}
+POST /api/guard {text} → quoted-span segments with per-span verdicts, a summary, and corrected_text
+POST /api/chat {message, mode?}
+POST /api/search {query} (TF-IDF over translation + explanation; returns real couplets only)
+GET /api/kurals?paal&adhikaram&q&page, GET /api/kurals/{n}
+POST /api/benchmark/run {thresholds?, seed?}
+
+QUOTE FIREWALL (Guarded Chat + AI Guard)
+- Live mode (if GEMINI_API_KEY is set, model gemini-2.0-flash via the REST generateContent endpoint): the system prompt forbids the LLM from writing couplet text and says to cite only [[KURAL:n]] tokens. The server replaces each token with the canonical text from the corpus. Any Tamil quote the LLM writes anyway is run through the guard: misquotes are corrected; NOT_FOUND, SPLICED and MISATTRIBUTED quotes are replaced with "⚠ [unverified quote removed]". The Raw column comes from a separate plain prompt asking for the quote.
+- Simulator mode (no key): 6 canned scenarios whose guarded output is produced by the REAL pipeline:
+  1. an altered 391 ending in "தக்க" → MISQUOTED
+  2. "யாதும் ஊரே யாவரும் கேளிர்" credited to Valluvar → MISATTRIBUTED
+  3. the fake "தோல்வி என்பது வெற்றிக்கு முதல் படி" → NOT_FOUND
+  4. 391 line 1 + 396 line 2 → SPLICED
+  5. a correct 616 with the claimed number 618 → WRONG_NUMBER
+  6. a correct 322 → VERIFIED
+
+BENCHMARK LAB (seed 42)
+Generate real ×200 (with spacing and punctuation noise), corrupted ×200 (1-3 grapheme edits), spliced ×100, fabricated ×200 (≥ 50% of words swapped from other couplets), and the decoy corpus. Report the confusion matrix, per-class accuracy, False-Accept Rate and abstention rate, against a naive baseline ("accept the best fuzzy match ≥ 0.6"). Threshold sliders recompute live. Target: 0% false-accept for fabricated and decoy at default thresholds, with the baseline clearly worse (tune the defaults if needed without weakening the exact-match rules).
+
+UI (single-page app, sticky tabs)
+1. Verify (home): Tamil textarea, optional claimed-number input, 6 example chips (real, misquoted, spliced, misattributed, fabricated, wrong number). The result panel has a verdict banner, a confidence meter, the canonical couplet card (number, paal › adhikaram, lines, English translation), the diff view, the evidence list, a collapsible pipeline trace, and a "Download certificate" PNG via html2canvas (number, couplet, translation, corpus hash, timestamp). NOT_FOUND shows a calm "Cannot verify. Do not present this as a Tirukkural couplet." state with a muted "closest real couplets, NOT a match" list.
+2. AI Guard: paste a paragraph; inline colored badges per quote, a summary bar, "Copy corrected text", and "Download report JSON".
+3. Guarded Chat: Raw AI vs Guarded, side by side, with finding chips.
+4. Find a Kural: meaning search.
+5. Browse: filters and pagination, 20 per page.
+6. Benchmark Lab.
+7. How it Works: an animated 5-stage pipeline.
+Footer: corpus hash, "1330 couplets verified at startup", link to /docs.
+
+DESIGN
+- Dark theme by default, with a light parchment toggle. Palette: bg #0B1020, surface #121A33, border #2A3560, text #E8ECF8, gold accent #D9A441.
+- Verdict colors: verified #22C55E, fragment #2DD4BF, misquoted #F59E0B, spliced #A78BFA, misattributed #38BDF8, not found #FB7185 (muted).
+- Noto Serif Tamil (1.5-1.9rem, line-height 1.8) for couplets. Card layout, 16px radius, responsive, faint kolam SVG background.
+- Animations: a gold seal stamps in on VERIFIED; diff letters fade in; a gentle shake on NOT_FOUND; pipeline stages light up sequentially; count-up metric cards; skeleton loaders; respect prefers-reduced-motion.
+- Accessibility: never rely on color alone (icon + text), aria-live on results, visible focus rings.
+
+TESTS (pytest, all must pass)
+- 391 real → VERIFIED
+- line 1 of 391 → VERIFIED_FRAGMENT
+- 391 with தக்க → MISQUOTED with a diff
+- 391 line 1 + 396 line 2 → SPLICED
+- யாதும் ஊரே யாவரும் கேளிர் → MISATTRIBUTED
+- தோல்வி என்பது வெற்றிக்கு முதல் படி → NOT_FOUND
+- அன்பே சிவம் → TOO_SHORT
+- 616 claimed as 618 → WRONG_NUMBER
+
+BUILD ORDER
+1. Scaffold the structure: app/ (main, config, corpus, normalize, verifier, guard, chat, search, benchmark, schemas), scripts/ (fetch_corpus, build_corpus), data/, static/, tests/.
+2. Seed and decoy JSON.
+3. Fetch and build the corpus.
+4. normalize.py.
+5. corpus.py (validation, hash, indexes).
+6. verifier.py + tests.
+7. guard.py and chat.py.
+8. search.py and benchmark.py.
+9. API in main.py.
+10. Frontend.
+11. Certificate.
+12. Polish: error and empty states, localStorage history, optional TTS (ta-IN), EN/தமிழ் label toggle.
+13. Run everything and fix bugs.
+14. Write a README with a demo script: verify a real couplet → misquote diff → fake-quote abstention → Purananuru misattribution → Raw vs Guarded chat → benchmark showing 0% false-accept vs the baseline.
+
+Never fabricate corpus data. If the download fails, use the seed and show the banner.
